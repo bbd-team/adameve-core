@@ -21,7 +21,7 @@ describe("NFT", function () {
       [developer, user1, user2, user3] = await ethers.getSigners()
 
       let AdamNFT = await ethers.getContractFactory("AdamNFT");
-      nft = await AdamNFT.deploy("XBOX", "XBOX", 15);
+      nft = await AdamNFT.deploy("XBOX", "XBOX", 15, 5);
 
       await (await nft.setAddress(address0, address0, developer.address))
   });
@@ -76,6 +76,14 @@ describe("NFT", function () {
         await (await nft.changeStatus(3)).wait();
 
         console.log('closed');
+        console.log('claim grand')
+        await (await nft.connect(user3).claimGrand([11, 12, 13, 14, 15])).wait();
+        await logBalance(user3);
+
+        await (await nft.connect(user2).claimGrand([6, 7, 8, 9, 10])).wait();
+        await logBalance(user2);
+
+        console.log('claim share');
         await logBalance(user1);
         await (await nft.connect(user1).claimShare([1, 2, 3, 4, 5])).wait();
         await logBalance(user1);
@@ -86,9 +94,6 @@ describe("NFT", function () {
         await (await nft.connect(user3).claimShare([11, 12, 13, 14, 15])).wait();
         await logBalance(user3);
 
-        console.log('claim grand')
-        await (await nft.connect(user3).claimGrand([11, 12, 13, 14, 15])).wait();
-        await logBalance(user3);
         console.log('claim dev')
         await (await nft.claimDev()).wait(); 
         await logBalance(user3);

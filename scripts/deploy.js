@@ -13,7 +13,7 @@ let whiteList = ["0xc03C12101AE20B8e763526d6841Ece893248a069", "0x2c41cE44BDB1ad
 let newOwner = "0xc03C12101AE20B8e763526d6841Ece893248a069";
 async function main() {
   let AdamNFT = await ethers.getContractFactory("AdamNFT");
-  nft = await AdamNFT.deploy("XBOX", "XBOX", 50);
+  nft = await AdamNFT.deploy("XBOX", "XBOX", 50, 30);
 
   console.log("setup");
   await (await nft.setAddress(address0, address0, owner))

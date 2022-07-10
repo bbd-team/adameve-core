@@ -6,10 +6,7 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
-
-interface ITrade {
-    function notify(address to, uint tokenId) external;
-}
+import "./interfaces/IAdamTrade.sol";
 
 contract AdamNFT is Ownable, ERC721Enumerable, ReentrancyGuard {
     using SafeMath for uint;
@@ -20,8 +17,9 @@ contract AdamNFT is Ownable, ERC721Enumerable, ReentrancyGuard {
     uint constant public AddTime = 2 * 60;
     uint constant public PriceNumer = 10005;
     uint constant public PriceDenom = 10000;
-    uint constant public MintLimit = 5;
     uint constant public GrandIds = 10;
+    uint public mintLimit;
+    uint[10] public grandPercent = [25, 17, 13, 11, 9, 7, 6, 5, 4, 3];
     uint public price = 1e14;
     Status public status = Status.Ready;
     uint public lastId = 0;
@@ -66,9 +64,11 @@ contract AdamNFT is Ownable, ERC721Enumerable, ReentrancyGuard {
     constructor(
         string memory name,
         string memory symbol,
-        uint _maxAmount
+        uint _maxAmount,
+        uint _mintLimit
     ) ERC721(name, symbol) {
         maxAmount = _maxAmount;
+        mintLimit = _mintLimit;
     }
 
     function setAddress(address _opensea, address _trade, address _dev) external onlyOwner {
@@ -81,6 +81,10 @@ contract AdamNFT is Ownable, ERC721Enumerable, ReentrancyGuard {
     function setMerkleRoot(bytes32 root) external onlyOwner {
         merkleRoot = root;
         emit SetMerkleRoot(root);
+    }
+
+    function isGrand(uint id) internal view returns(bool) {
+        return id.add(GrandIds) > lastId;
     }
 
     function changeStatus(Status _status) external onlyOwner {
@@ -97,18 +101,33 @@ contract AdamNFT is Ownable, ERC721Enumerable, ReentrancyGuard {
         }
     }
 
+    function getReward(uint[] memory ids) external view returns(uint[] memory, address[] memory) {
+        uint l = ids.length;
+        uint[] memory amounts = new uint[](l);
+        address[] memory owners = new address[](l);
+        for(uint i = 0;i < l;i++) {
+            NFTInfo memory info = nfts[ids[i]];
+            amounts[i] = pricePerShare.sub(info.debt).mul(info.share).div(1e18);
+            owners[i] = ownerOf(ids[i]);
+        }
+
+        return (amounts, owners);
+    }
+ 
     function claimGrand(uint[] memory ids) external nonReentrant returns(uint amount) {
         require(status == Status.Close, "Not closed");
         uint l = ids.length;
         require(l > 0, "Invalid");
         for(uint i = 0;i < l;i++) {
             NFTInfo storage info = nfts[ids[i]];
-            require(ids[i].add(GrandIds) > lastId, "Not grand prize id");
+            require(isGrand(ids[i]), "Not grand prize id");
             require(ownerOf(ids[i]) == msg.sender, 'Not owner');
             require(!info.grandClaimed, 'Already claimed');
             info.grandClaimed = true;
+            uint idx = lastId.sub(ids[i]);
+            amount = amount.add(grandPool.mul(grandPercent[idx]).div(100));
         }
-        amount = grandPool.mul(l).div(GrandIds);
+        
         _transferEther(msg.sender, amount);
         emit ClaimGrandPool(msg.sender, ids, amount);
     }
@@ -129,10 +148,12 @@ contract AdamNFT is Ownable, ERC721Enumerable, ReentrancyGuard {
         require(status == Status.Close, "Not closed");
         for(uint i = 0;i < l;i++) {
             NFTInfo storage info = nfts[ids[i]];
+            require(!isGrand(ids[i]) || info.grandClaimed, "Claim grand first");
             require(ownerOf(ids[i]) == msg.sender, 'Not owner');
             require(!info.shareClaimed, 'Already claimed');
             info.shareClaimed = true;
             amount = amount.add(pricePerShare.sub(info.debt).mul(info.share).div(1e18));
+            _burn(ids[i]);
         }
         _transferEther(msg.sender, amount);
         emit ClaimShare(msg.sender, ids, amount);
@@ -159,7 +180,7 @@ contract AdamNFT is Ownable, ERC721Enumerable, ReentrancyGuard {
     }
 
     function _mintProcess(uint amount) internal {
-        require(users[msg.sender].add(amount) <= MintLimit, "Limit exceed");
+        require(users[msg.sender].add(amount) <= mintLimit, "Limit exceed");
         uint pay = 0; 
         for(uint i = 0;i < amount;i++) {
             pay += price;
@@ -216,7 +237,7 @@ contract AdamNFT is Ownable, ERC721Enumerable, ReentrancyGuard {
         require(status == Status.Close, "Cannot transfer nft now");
         super._transfer(from, to, tokenId);
         if(from == opensea && trade != address(0)) {
-            ITrade(trade).notify(to, tokenId);
+            IAdamTrade(trade).notify(to, tokenId);
         }
     }
 }
