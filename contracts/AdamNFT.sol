@@ -29,7 +29,6 @@ contract AdamNFT is Ownable, ERC721Enumerable, ReentrancyGuard {
     address public dev;
     uint public closeTime;
     uint public totalShare = 0;
-    uint public totalPool = 0;
     string public uri;
     bool public devClaimed;
     uint public devPool;
@@ -53,7 +52,7 @@ contract AdamNFT is Ownable, ERC721Enumerable, ReentrancyGuard {
     event Mint(address user, uint tokenId, uint price);
     event Open();
     event Premint();
-    event Close(uint totalPool);
+    event Close();
     event SetBaseURI(string uri);
     event ClaimShare(address user, uint[] ids, uint amount);
     event ClaimGrandPool(address user, uint[] ids, uint amount);
@@ -94,24 +93,21 @@ contract AdamNFT is Ownable, ERC721Enumerable, ReentrancyGuard {
             emit Open();
         } else if(status == Status.Close) {
             require(block.timestamp > closeTime || lastId == maxAmount, "Cannot close now");
-
-            emit Close(totalPool);
+            emit Close();
         } else if(status == Status.Premint) {
             emit Premint();
         }
     }
 
-    function getReward(uint[] memory ids) external view returns(uint[] memory, address[] memory) {
+    function getReward(uint[] memory ids) external view returns(uint[] memory) {
         uint l = ids.length;
         uint[] memory amounts = new uint[](l);
-        address[] memory owners = new address[](l);
         for(uint i = 0;i < l;i++) {
             NFTInfo memory info = nfts[ids[i]];
             amounts[i] = pricePerShare.sub(info.debt).mul(info.share).div(1e18);
-            owners[i] = ownerOf(ids[i]);
         }
 
-        return (amounts, owners);
+        return amounts;
     }
  
     function claimGrand(uint[] memory ids) external nonReentrant returns(uint amount) {
@@ -175,6 +171,7 @@ contract AdamNFT is Ownable, ERC721Enumerable, ReentrancyGuard {
             devPool = devPool.add(amount.div(10));
             tradePool = tradePool.add(amount.mul(5).div(100));
             grandPool = grandPool.add(amount.div(10));
+            sharePool = sharePool.add(amount.mul(75).div(100));
             pricePerShare = pricePerShare.add(amount.mul(75).mul(1e18).div(100).div(totalShare));
         }
     }
