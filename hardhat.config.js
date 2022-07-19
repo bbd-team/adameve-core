@@ -46,7 +46,8 @@ module.exports = {
       accounts: [`0x${PRIVATE_KEY}`],
     },
     polygon: {
-    	url: `https://rpc-mumbai.maticvigil.com`,
+    	url: `https://polygon-rpc.com/`,
+      gasPrice: 60000000000,
     	accounts: [`0x${PRIVATE_KEY}`],
     }
   }

@@ -86,6 +86,10 @@ contract AdamNFT is Ownable, ERC721Enumerable, ReentrancyGuard {
         return id.add(GrandIds) > lastId;
     }
 
+    function getShare(uint id) external view returns(uint, uint) {
+        return (nfts[id].share, totalShare);
+    }
+
     function changeStatus(Status _status) external onlyOwner {
         status = _status;
         if(status == Status.Open) {
@@ -128,8 +132,9 @@ contract AdamNFT is Ownable, ERC721Enumerable, ReentrancyGuard {
         emit ClaimGrandPool(msg.sender, ids, amount);
     }
 
-    function claimDev() external nonReentrant onlyOwner {
+    function claimDev() external onlyOwner {
         require(status == Status.Close, "Not closed");
+        require(dev != address(0) && trade != address(0), "No address");
         require(!devClaimed, "Claimed");
         devClaimed = true;
         _transferEther(dev, devPool);
@@ -144,12 +149,10 @@ contract AdamNFT is Ownable, ERC721Enumerable, ReentrancyGuard {
         require(status == Status.Close, "Not closed");
         for(uint i = 0;i < l;i++) {
             NFTInfo storage info = nfts[ids[i]];
-            require(!isGrand(ids[i]) || info.grandClaimed, "Claim grand first");
             require(ownerOf(ids[i]) == msg.sender, 'Not owner');
             require(!info.shareClaimed, 'Already claimed');
             info.shareClaimed = true;
             amount = amount.add(pricePerShare.sub(info.debt).mul(info.share).div(1e18));
-            _burn(ids[i]);
         }
         _transferEther(msg.sender, amount);
         emit ClaimShare(msg.sender, ids, amount);
@@ -161,7 +164,7 @@ contract AdamNFT is Ownable, ERC721Enumerable, ReentrancyGuard {
     }
 
     function contractURI() public pure returns (string memory) { 
-        return ""; 
+        return "ipfs://QmWWyXUTXWEVBAL2FX2zXLAzEtC7Wc26HtJb6CKWKoRGh1"; 
     }
 
     function _distribute(uint amount) internal {
@@ -233,7 +236,7 @@ contract AdamNFT is Ownable, ERC721Enumerable, ReentrancyGuard {
     ) internal override {
         require(status == Status.Close, "Cannot transfer nft now");
         super._transfer(from, to, tokenId);
-        if(from == opensea && trade != address(0)) {
+        if(msg.sender == opensea && trade != address(0)) {
             IAdamTrade(trade).notify(to, tokenId);
         }
     }

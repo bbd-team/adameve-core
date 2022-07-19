@@ -6,6 +6,7 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "./interfaces/IAdamNFT.sol";
+import "./interfaces/IWETH9.sol";
 import "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
 contract AdamTrade is Ownable, ReentrancyGuard {
@@ -13,32 +14,27 @@ contract AdamTrade is Ownable, ReentrancyGuard {
 
     enum Status { Ready, Open, Close } 
 
-    uint constant public MaxTime = 7 * 24 * 60 * 60;
+    uint constant public MaxTime = 2 * 24 * 60 * 60;
     uint constant public AddTime = 10 * 60;
     uint constant public GrandIds = 10;
     uint public closeTime;
-
+    uint[10] public grandPercent = [25, 17, 13, 11, 9, 7, 6, 5, 4, 3];
     Status public status = Status.Ready;
-    address public nft;
-
     string public uri;
     uint public grandPool;
     uint public sharePool;
-    uint public tradePool;
     uint constant public MAG = 1e18;
     uint public cnt;
+    address public nft;
 
     EnumerableSet.UintSet private grandSet;
 
     struct NFTInfo {
         uint shareDebt;
         uint grandDebt;
-        bool shareClaimed;
-        bool grandClaimed;
+        uint grandIdx;
     }
 
-    mapping(address => uint) public shareRewards;
-    mapping(address => uint) public grandRewards;
     mapping(uint => NFTInfo) public nfts;
     event SetAddress(address opensea, address trade, address dev);
     event Mint(address user, uint tokenId, uint price);
@@ -46,34 +42,40 @@ contract AdamTrade is Ownable, ReentrancyGuard {
     event Close();
     event ClaimShare(address user, uint[] ids, uint amount);
     event ClaimGrandPool(address user, uint[] ids, uint amount);
-    event ClaimDevPool(address dev, uint amount);
-    event AddReward(address token, uint amount);
+    event AddGrandReward(uint amount);
+    event AddShareReward(uint amount);
     event Transfer(address to, uint tokenId);
 
     constructor(address _nft) {
         nft = _nft;
     }
 
+    receive() external payable {
+    }
+
+    function emergencyWithdraw(uint amount) external onlyOwner {
+        _transferEther(msg.sender, amount);
+    }
+
     function changeStatus(Status _status) external onlyOwner {
+        status = _status;
         if(_status == Status.Open) {
-            cnt = IAdamNFT(nft).lastId();
-            _distribute(address(0), address(this).balance);
+            // grandPool = grandPool.add(address(this).balance);
             closeTime = block.timestamp.add(MaxTime);
+            cnt = IAdamNFT(nft).lastId();
             emit Open();
         } else if(_status == Status.Close) {
+            // require(block.timestamp > closeTime, "Cannot close now");
+            uint l = EnumerableSet.length(grandSet);
+            for(uint i = 0; i < l;i++) {
+                nfts[EnumerableSet.at(grandSet, i)].grandIdx = l - i - 1;
+            }
             emit Close();
         }
     }
 
-    function _distribute(address token, uint amount) internal {
-        uint shareAmount = amount.mul(5).div(cnt).div(6);
-        shareRewards[token] = shareRewards[token].add(shareAmount);
-        grandRewards[token] = grandRewards[token].add(amount.sub(shareAmount).div(GrandIds));
-        emit AddReward(token, amount);
-    }
-
     function notify(address to, uint tokenId) external {
-        if(status == Status.Open && block.timestamp <= closeTime) {
+        if(msg.sender == address(nft) && status == Status.Open && block.timestamp <= closeTime) {
             if(EnumerableSet.contains(grandSet, tokenId)) {
                 EnumerableSet.remove(grandSet, tokenId);
             } 
@@ -91,15 +93,54 @@ contract AdamTrade is Ownable, ReentrancyGuard {
         }
     }
 
-    function claim(address[] memory tokens) external {
-         
-    }
-
-    function addReward(address token, uint amount) payable external onlyOwner {
-        if(token == address(0)) {
-            require(msg.value == amount, "Invalid value");
+    function claimShare(uint[] memory ids)  external nonReentrant returns(uint amount)  {
+        uint l = ids.length;
+        require(l > 0, "Invalid");
+        require(status == Status.Close, "Not closed");
+        for(uint i = 0;i < l;i++) {
+            NFTInfo storage info = nfts[ids[i]];
+            require(IERC721(nft).ownerOf(ids[i]) == msg.sender, 'Not owner');
+            (uint tokenShare, uint totalShare) = IAdamNFT(nft).getShare(ids[i]);
+            amount = amount.add(sharePool.sub(info.shareDebt).mul(tokenShare).div(totalShare));
+            info.shareDebt = sharePool;
         }
 
-        _distribute(token, amount);
+        require(amount > 0, "No remain share amount");
+        _transferEther(msg.sender, amount);
+        emit ClaimShare(msg.sender, ids, amount);
+    }
+
+    function claimGrand(uint[] memory ids) external nonReentrant returns(uint amount)  {
+        require(status == Status.Close, "Not closed");
+        uint l = ids.length;
+        require(l > 0, "Invalid");
+        for(uint i = 0;i < l;i++) {
+            NFTInfo storage info = nfts[ids[i]];
+            require(EnumerableSet.contains(grandSet, ids[i]), "Not grand prize id");
+            require(IERC721(nft).ownerOf(ids[i]) == msg.sender, 'Not owner');
+            amount = amount.add(grandPool.sub(info.grandDebt).mul(grandPercent[info.grandIdx]).div(100));
+            info.grandDebt = grandPool;
+        }
+        
+        require(amount > 0, "No remain grand amount");
+        _transferEther(msg.sender, amount);
+        emit ClaimGrandPool(msg.sender, ids, amount);
+    }
+
+    function _transferEther(address to, uint amount) internal {
+        (bool success, ) = to.call{value: amount}("");
+        require(success, "Transfer failed.");
+    }
+
+    function addGrandReward(uint amount) payable external {
+        require(msg.value == amount, "Invalid value");
+        grandPool = grandPool.add(amount);
+        emit AddGrandReward(amount);
+    }
+
+    function addShareReward(uint amount) payable external {
+        require(msg.value == amount, "Invalid value");
+        sharePool = sharePool.add(amount);
+        emit AddShareReward(amount);
     }
 }
