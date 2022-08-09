@@ -186,16 +186,19 @@ contract AdamNFT is Ownable, ERC721Enumerable, ReentrancyGuard {
         uint pay = 0; 
         for(uint i = 0;i < amount;i++) {
             uint nftPrice = price;
-            pay += nftPrice;
+            pay += price;
             lastId++;
             NFTInfo storage info = nfts[lastId];
 
+            // inviter reward
             uint reward = nftPrice.mul(5).div(100);
             nftPrice = nftPrice.sub(reward);
             _transferEther(inviter, reward);
             emit InviteReward(msg.sender, inviter, reward);
+
+
             _distribute(nftPrice);
-            
+            totalShare = totalShare.add(nftPrice);
             _mint(msg.sender, lastId);
             info.share = nftPrice;
             info.debt = pricePerShare;
