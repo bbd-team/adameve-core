@@ -15,10 +15,10 @@ const toMathAmount = (amount, decimals = 18) => new BN(amount.toString()).divide
 
 describe("NFT", function () {
   let nft, trade, weth9;
-  let developer, user1, user2, user3, user4;
+  let developer, user1, user2, user3, user4, inviter;
 
   before(async () => {
-      [developer, user1, user2, user3, user4] = await ethers.getSigners()
+      [developer, user1, user2, user3, user4, inviter] = await ethers.getSigners()
 
       let AdamNFT = await ethers.getContractFactory("AdamNFT");
       nft = await AdamNFT.deploy("XBOX", "XBOX", 15, 5);
@@ -34,6 +34,7 @@ describe("NFT", function () {
   async function logBalance(user) {
       console.log(`balance ${toMathAmount(await provider.getBalance(user.address))}`)
       console.log(`contract ${toMathAmount(await provider.getBalance(nft.address))}`)
+      console.log(`inviter ${toMathAmount(await provider.getBalance(inviter.address))}`)
 
       let closeTime = await nft.closeTime();
       console.log(`close time ${moment(closeTime,'s').format()}`)
@@ -48,6 +49,7 @@ describe("NFT", function () {
   async function logBalanceTrade(user, name = "user4") {
       console.log(`balance ${name} ${toMathAmount(await provider.getBalance(user.address))}`)
       console.log(`contract ${toMathAmount(await provider.getBalance(trade.address))}`)
+      console.log(`inviter ${toMathAmount(await provider.getBalance(inviter.address))}`)
 
       let closeTime = await trade.closeTime();
       console.log(`close time ${moment(closeTime,'s').format()}`)
@@ -64,29 +66,33 @@ describe("NFT", function () {
       const rootHash = merkleTree.getRoot()
       await (await nft.setMerkleRoot(rootHash)).wait();
 
+      await logBalance(developer);
       let proof = merkleTree.getHexProof(keccak256(user1.address))
-      await (await nft.connect(user1).premint(5, proof, {value: toTokenAmount(10)})).wait();
+      await (await nft.connect(user1).premint(5, inviter.address, proof, {value: toTokenAmount(10)})).wait();
 
       proof = merkleTree.getHexProof(keccak256(user2.address))
-      await (await nft.connect(user2).premint(3, proof, {value: toTokenAmount(10)})).wait();
+      await (await nft.connect(user2).premint(3, inviter.address, proof, {value: toTokenAmount(10)})).wait();
 
       proof = merkleTree.getHexProof(keccak256(user1.address))
-      await expect(nft.connect(user1).premint(1, proof, {value: toTokenAmount(10)}))
+      await expect(nft.connect(user1).premint(1, inviter.address, proof, {value: toTokenAmount(10)}))
         .to.be.revertedWith('Limit exceed')
 
       proof = merkleTree.getHexProof(keccak256(user3.address))
-      await expect(nft.connect(user3).premint(3, proof, {value: toTokenAmount(10)}))
+      await expect(nft.connect(user3).premint(3, inviter.address, proof, {value: toTokenAmount(10)}))
         .to.be.revertedWith('Invalid proof')
+
+       await logBalance(developer);
+        console.log("premint");
   })
 
   it("simple mint", async function () {
         await (await nft.changeStatus(2)).wait();
         await logBalance(developer);
 
-        await (await nft.connect(user2).mint(2, {value: toTokenAmount(10)})).wait();
+        await (await nft.connect(user2).mint(2, inviter.address, {value: toTokenAmount(10)})).wait();
         await logBalance(user2);
 
-        await (await nft.connect(user3).mint(5, {value: toTokenAmount(10)})).wait();
+        await (await nft.connect(user3).mint(5, inviter.address, {value: toTokenAmount(10)})).wait();
         await logBalance(user3);
 
         await (await nft.changeStatus(3)).wait();

@@ -41,7 +41,7 @@ contract AdamTrade is Ownable, ReentrancyGuard {
     event Open();
     event Close();
     event ClaimShare(address user, uint[] ids, uint amount);
-    event ClaimGrandPool(address user, uint[] ids, uint amount);
+    event ClaimGrand(address user, uint[] ids, uint amount);
     event AddGrandReward(uint amount);
     event AddShareReward(uint amount);
     event Transfer(address to, uint tokenId);
@@ -60,12 +60,12 @@ contract AdamTrade is Ownable, ReentrancyGuard {
     function changeStatus(Status _status) external onlyOwner {
         status = _status;
         if(_status == Status.Open) {
-            // grandPool = grandPool.add(address(this).balance);
+            grandPool = grandPool.add(address(this).balance);
             closeTime = block.timestamp.add(MaxTime);
             cnt = IAdamNFT(nft).lastId();
             emit Open();
         } else if(_status == Status.Close) {
-            // require(block.timestamp > closeTime, "Cannot close now");
+            require(block.timestamp > closeTime, "Cannot close now");
             uint l = EnumerableSet.length(grandSet);
             for(uint i = 0; i < l;i++) {
                 nfts[EnumerableSet.at(grandSet, i)].grandIdx = l - i - 1;
@@ -91,6 +91,20 @@ contract AdamTrade is Ownable, ReentrancyGuard {
 
             emit Transfer(to, tokenId);
         }
+    }
+
+    function getShareReward(uint[] memory ids) external view returns(uint[] memory, address[] memory) {
+        uint l = ids.length;
+        uint[] memory amounts = new uint[](l);
+        address[] memory users = new address[](l);
+        for(uint i = 0;i < l;i++) {
+            NFTInfo memory info = nfts[ids[i]];
+            (uint tokenShare, uint totalShare) = IAdamNFT(nft).getShare(ids[i]);
+            amounts[i] = sharePool.sub(info.shareDebt).mul(tokenShare).div(totalShare);
+            users[i] = IERC721(nft).ownerOf(ids[i]);
+        }
+
+        return (amounts, users);
     }
 
     function claimShare(uint[] memory ids)  external nonReentrant returns(uint amount)  {
@@ -124,7 +138,7 @@ contract AdamTrade is Ownable, ReentrancyGuard {
         
         require(amount > 0, "No remain grand amount");
         _transferEther(msg.sender, amount);
-        emit ClaimGrandPool(msg.sender, ids, amount);
+        emit ClaimGrand(msg.sender, ids, amount);
     }
 
     function _transferEther(address to, uint amount) internal {

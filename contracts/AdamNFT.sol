@@ -59,6 +59,7 @@ contract AdamNFT is Ownable, ERC721Enumerable, ReentrancyGuard {
     event ClaimDevPool(address dev, uint amount);
     event ClaimTradePool(address trade, uint amount);
     event SetMerkleRoot(bytes32 root);
+    event InviteReward(address buyer, address inviter, uint amount);
 
     constructor(
         string memory name,
@@ -179,19 +180,26 @@ contract AdamNFT is Ownable, ERC721Enumerable, ReentrancyGuard {
         }
     }
 
-    function _mintProcess(uint amount) internal {
+    function _mintProcess(address inviter, uint amount) internal {
+        require(inviter != address(0) && inviter != msg.sender, "Invalid inviter");
         require(users[msg.sender].add(amount) <= mintLimit, "Limit exceed");
         uint pay = 0; 
         for(uint i = 0;i < amount;i++) {
-            pay += price;
+            uint nftPrice = price;
+            pay += nftPrice;
             lastId++;
             NFTInfo storage info = nfts[lastId];
-            _distribute(price);
-            totalShare = totalShare.add(price);
+
+            uint reward = nftPrice.mul(5).div(100);
+            nftPrice = nftPrice.sub(reward);
+            _transferEther(inviter, reward);
+            emit InviteReward(msg.sender, inviter, reward);
+            _distribute(nftPrice);
+            
             _mint(msg.sender, lastId);
-            info.share = price;
+            info.share = nftPrice;
             info.debt = pricePerShare;
-            emit Mint(msg.sender, lastId, price);
+            emit Mint(msg.sender, lastId, nftPrice);
             price = price.mul(PriceNumer).div(PriceDenom);
         }
 
@@ -202,17 +210,17 @@ contract AdamNFT is Ownable, ERC721Enumerable, ReentrancyGuard {
         users[msg.sender] = users[msg.sender].add(amount);
     }
 
-    function premint(uint amount, bytes32[] memory proof) payable external nonReentrant {
+    function premint(uint amount, address inviter, bytes32[] memory proof) payable external nonReentrant {
         bytes32 leaf = keccak256(abi.encodePacked(msg.sender));
         require(status == Status.Premint, "Cannot premint now");
         require(MerkleProof.verify(proof, merkleRoot, leaf), "Invalid proof");
-        _mintProcess(amount);
+        _mintProcess(inviter, amount);
     }
 
-    function mint(uint amount) payable nonReentrant external {
+    function mint(uint amount, address inviter) payable nonReentrant external {
         require(status == Status.Open && block.timestamp <= closeTime, "Not open or closed");
         require(lastId.add(amount) <= maxAmount, "Amount exceed");
-        _mintProcess(amount);
+        _mintProcess(inviter, amount);
 
         closeTime = closeTime.add(AddTime.mul(amount));
         if(closeTime > block.timestamp + MaxTime) {
