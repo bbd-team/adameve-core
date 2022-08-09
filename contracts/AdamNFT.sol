@@ -177,7 +177,7 @@ contract AdamNFT is Ownable, ERC721Enumerable, ReentrancyGuard {
             grandPool = grandPool.add(amount.div(10));
             sharePool = sharePool.add(amount.mul(75).div(100));
             pricePerShare = pricePerShare.add(amount.mul(75).mul(1e18).div(100).div(totalShare));
-        }
+        } 
     }
 
     function _mintProcess(address inviter, uint amount) internal {
